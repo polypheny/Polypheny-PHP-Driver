@@ -7,11 +7,10 @@ Document collection metadata requires a server with Prism 2.2 document metadata 
 
 ## Installation
 
-Add this GitHub repository to your Composer project and require its `master` branch.
+Install the driver from Packagist with Composer.
 
 ```sh
-composer config repositories.polypheny-php vcs https://github.com/polypheny/Polypheny-PHP-Driver
-composer require polypheny/php-driver:dev-master
+composer require polypheny/php-driver
 ```
 
 ## Connections and queries
