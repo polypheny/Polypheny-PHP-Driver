@@ -1,4 +1,4 @@
-name: PHP connector checks
+name: PHP driver checks
 
 on:
   push:

@@ -1,5 +1,5 @@
 {
-    "name": "polypheny/connector-php",
+    "name": "polypheny/php-driver",
     "description": "PHP driver for Polypheny through the Prism interface",
     "type": "library",
     "license": "Apache-2.0",

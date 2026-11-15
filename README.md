@@ -1,4 +1,4 @@
-# Polypheny Connector for PHP
+# Polypheny PHP Driver
 
 A PHP client for [Polypheny](https://polypheny.com/) using the Prism query interface.
 It requires 64-bit PHP 8.2 or later and uses the published Prism 2.2 schema.
@@ -10,8 +10,8 @@ Document collection metadata requires a server with Prism 2.2 document metadata 
 Add this GitHub repository to your Composer project and require its `master` branch.
 
 ```sh
-composer config repositories.polypheny-php vcs https://github.com/polypheny/Polypheny-Connector-PHP
-composer require polypheny/connector-php:dev-master
+composer config repositories.polypheny-php vcs https://github.com/polypheny/Polypheny-PHP-Driver
+composer require polypheny/php-driver:dev-master
 ```
 
 ## Connections and queries
