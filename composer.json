@@ -1,0 +1,25 @@
+{
+    "name": "polypheny/connector-php",
+    "description": "PHP driver for Polypheny through the Prism interface",
+    "type": "library",
+    "license": "Apache-2.0",
+    "require": {
+        "php": ">=8.2",
+        "php-64bit": "*",
+        "google/protobuf": "^5.35"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^11.5"
+    },
+    "autoload": {
+        "psr-4": {
+            "Polypheny\\": "src/",
+            "Org\\Polypheny\\Prism\\": "src/Generated/Org/Polypheny/Prism/",
+            "GPBMetadata\\Org\\Polypheny\\Prism\\": "src/Generated/GPBMetadata/Org/Polypheny/Prism/"
+        }
+    },
+    "scripts": {
+        "test": "phpunit --testsuite unit",
+        "test:integration": "phpunit --testsuite integration"
+    }
+}

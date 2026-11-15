@@ -1,0 +1,110 @@
+name: PHP connector checks
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  unit:
+    name: Unit (PHP ${{ matrix.php }}, ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        php: ['8.2', '8.3', '8.4', '8.5']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          coverage: none
+      - run: composer validate --strict
+      - run: composer install --no-interaction --prefer-dist
+      - run: composer test
+
+  integration:
+    name: Integration (Prism 2.2 and MongoDB)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: polypheny/Polypheny-DB
+          ref: ${{ vars.POLYPHENY_DB_REF || '7245dc30008130c3efa2fe16948f901e189abf29' }}
+          path: polypheny-db
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          coverage: none
+      - run: composer install --no-interaction --prefer-dist
+      - name: Build the test server
+        working-directory: polypheny-db
+        run: ./gradlew :dbms:shadowJar assemblePlugins -PwithoutpullingUi=true --console=plain
+      - name: Run the live suite over TCP and Unix sockets
+        shell: bash
+        run: |
+          server_home="$(mktemp -d /tmp/polypheny-php.XXXXXX)"
+          server_pid=''
+          cleanup() {
+            local status=$?
+            if [[ "$status" != 0 ]]; then
+              tail -150 "$RUNNER_TEMP/polypheny.log" 2>/dev/null || true
+              docker logs prism-php-mongo 2>/dev/null || true
+            fi
+            if [[ -n "$server_pid" ]]; then
+              kill "$server_pid" 2>/dev/null || true
+              wait "$server_pid" 2>/dev/null || true
+            fi
+            docker rm --force prism-php-mongo >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          docker run --detach --name prism-php-mongo --publish 127.0.0.1:27017:27017 \
+            mongo:8.0.38 --replSet prism --bind_ip_all
+          for attempt in {1..60}; do
+            if docker exec prism-php-mongo mongosh --quiet --eval 'db.adminCommand({ping: 1})' >/dev/null 2>&1; then
+              break
+            fi
+            sleep 1
+          done
+          docker exec prism-php-mongo mongosh --quiet --eval \
+            'rs.initiate({_id: "prism", members: [{_id: 0, host: "127.0.0.1:27017"}]})'
+          for attempt in {1..60}; do
+            if docker exec prism-php-mongo mongosh --quiet --eval 'quit(db.hello().isWritablePrimary ? 0 : 1)'; then
+              break
+            fi
+            sleep 1
+          done
+          docker exec prism-php-mongo mongosh --quiet --eval 'quit(db.hello().isWritablePrimary ? 0 : 1)'
+          cat > "$RUNNER_TEMP/prism-mongosh" <<'SH'
+          #!/usr/bin/env bash
+          exec docker exec prism-php-mongo mongosh "$@"
+          SH
+          chmod +x "$RUNNER_TEMP/prism-mongosh"
+
+          java -Duser.home="$server_home" \
+            -jar polypheny-db/dbms/build/libs/dbms-0.10.1-SNAPSHOT.jar \
+            -resetCatalog -noAutoDocker > "$RUNNER_TEMP/polypheny.log" 2>&1 &
+          server_pid=$!
+          for attempt in {1..90}; do
+            if [[ "$(curl -fsS http://127.0.0.1:7659/isReady 2>/dev/null || true)" == true ]]; then
+              break
+            fi
+            kill -0 "$server_pid"
+            sleep 1
+          done
+          test "$(curl -fsS http://127.0.0.1:7659/isReady)" = true
+          POLYPHENY_TEST_INTEGRATION=1 \
+            POLYPHENY_TEST_SOCKET="$server_home/.polypheny/polypheny-prism.sock" \
+            POLYPHENY_TEST_MONGOSH="$RUNNER_TEMP/prism-mongosh" \
+            composer test:integration

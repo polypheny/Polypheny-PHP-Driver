@@ -1,0 +1,41 @@
+/*
+Messages related to graph frames as used to represent results form the labeled property graph model.
+*/
+
+syntax = "proto3";
+import "org/polypheny/prism/value.proto";
+
+option java_multiple_files = true;
+option java_package = "org.polypheny.prism";
+option java_outer_classname = "GraphResultProto";
+
+option go_package = "org/polypheny/prism;prism";
+option csharp_namespace = "Polypheny.Prism";
+
+package org.polypheny.prism;
+
+/*
+ * The GraphFrame represents the non-relational result of a query in the labeled property graph model.
+ * If the query returns a relational result, such as when aggregations are used or specific properties are returned,
+ * a relational frame is used. The GraphFrame is used for results where a set of nodes and/or edges is returned.
+ * The nodes or edges are wrapped in graph elements to allow them to be mixed as paths are returned as a mixed collection of both.
+ * If a result produces multiple frames (used to transmit large results), all results will be of the same type (relational vs. graph).
+ */
+message GraphFrame {
+  repeated GraphElement element = 1;
+}
+
+/*
+ * Represents an element in a graph. Each element is either a node or an edge.
+ */
+message GraphElement {
+  // This field stores the graph element itself which is either a node or an edge.
+  oneof element {
+    // This field stores the node if the graph element is a node.
+    ProtoNode node = 1;
+    // This field stores the edge if the graph element is an edge.
+    ProtoEdge edge = 2;
+  }
+}
+
+
