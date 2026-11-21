@@ -58,6 +58,14 @@ class ProtoValue extends \Google\Protobuf\Internal\Message
      *           Field used to represent a document consisting of key value pairs where keys and values are arbitrary ProtoValues. If set, all other fields must be empty.
      *     @type \Org\Polypheny\Prism\ProtoFile $file
      *           Field used to represent a FILE type such as FILE, IMAGE, VIDEO or AUDIO.
+     *     @type \Org\Polypheny\Prism\ProtoNode $node
+     *           A node in a labeled property graph.
+     *     @type \Org\Polypheny\Prism\ProtoEdge $edge
+     *           An edge in a labeled property graph.
+     *     @type \Org\Polypheny\Prism\ProtoPath $path
+     *           An ordered path through a labeled property graph.
+     *     @type \Org\Polypheny\Prism\ProtoGraph $graph
+     *           A graph containing sets of nodes and edges.
      * }
      */
     public function __construct($data = NULL) {
@@ -557,6 +565,130 @@ class ProtoValue extends \Google\Protobuf\Internal\Message
     {
         GPBUtil::checkMessage($var, \Org\Polypheny\Prism\ProtoFile::class);
         $this->writeOneof(19, $var);
+
+        return $this;
+    }
+
+    /**
+     * A node in a labeled property graph.
+     *
+     * Generated from protobuf field <code>.org.polypheny.prism.ProtoNode node = 20;</code>
+     * @return \Org\Polypheny\Prism\ProtoNode|null
+     */
+    public function getNode()
+    {
+        return $this->readOneof(20);
+    }
+
+    public function hasNode()
+    {
+        return $this->hasOneof(20);
+    }
+
+    /**
+     * A node in a labeled property graph.
+     *
+     * Generated from protobuf field <code>.org.polypheny.prism.ProtoNode node = 20;</code>
+     * @param \Org\Polypheny\Prism\ProtoNode $var
+     * @return $this
+     */
+    public function setNode($var)
+    {
+        GPBUtil::checkMessage($var, \Org\Polypheny\Prism\ProtoNode::class);
+        $this->writeOneof(20, $var);
+
+        return $this;
+    }
+
+    /**
+     * An edge in a labeled property graph.
+     *
+     * Generated from protobuf field <code>.org.polypheny.prism.ProtoEdge edge = 21;</code>
+     * @return \Org\Polypheny\Prism\ProtoEdge|null
+     */
+    public function getEdge()
+    {
+        return $this->readOneof(21);
+    }
+
+    public function hasEdge()
+    {
+        return $this->hasOneof(21);
+    }
+
+    /**
+     * An edge in a labeled property graph.
+     *
+     * Generated from protobuf field <code>.org.polypheny.prism.ProtoEdge edge = 21;</code>
+     * @param \Org\Polypheny\Prism\ProtoEdge $var
+     * @return $this
+     */
+    public function setEdge($var)
+    {
+        GPBUtil::checkMessage($var, \Org\Polypheny\Prism\ProtoEdge::class);
+        $this->writeOneof(21, $var);
+
+        return $this;
+    }
+
+    /**
+     * An ordered path through a labeled property graph.
+     *
+     * Generated from protobuf field <code>.org.polypheny.prism.ProtoPath path = 22;</code>
+     * @return \Org\Polypheny\Prism\ProtoPath|null
+     */
+    public function getPath()
+    {
+        return $this->readOneof(22);
+    }
+
+    public function hasPath()
+    {
+        return $this->hasOneof(22);
+    }
+
+    /**
+     * An ordered path through a labeled property graph.
+     *
+     * Generated from protobuf field <code>.org.polypheny.prism.ProtoPath path = 22;</code>
+     * @param \Org\Polypheny\Prism\ProtoPath $var
+     * @return $this
+     */
+    public function setPath($var)
+    {
+        GPBUtil::checkMessage($var, \Org\Polypheny\Prism\ProtoPath::class);
+        $this->writeOneof(22, $var);
+
+        return $this;
+    }
+
+    /**
+     * A graph containing sets of nodes and edges.
+     *
+     * Generated from protobuf field <code>.org.polypheny.prism.ProtoGraph graph = 23;</code>
+     * @return \Org\Polypheny\Prism\ProtoGraph|null
+     */
+    public function getGraph()
+    {
+        return $this->readOneof(23);
+    }
+
+    public function hasGraph()
+    {
+        return $this->hasOneof(23);
+    }
+
+    /**
+     * A graph containing sets of nodes and edges.
+     *
+     * Generated from protobuf field <code>.org.polypheny.prism.ProtoGraph graph = 23;</code>
+     * @param \Org\Polypheny\Prism\ProtoGraph $var
+     * @return $this
+     */
+    public function setGraph($var)
+    {
+        GPBUtil::checkMessage($var, \Org\Polypheny\Prism\ProtoGraph::class);
+        $this->writeOneof(23, $var);
 
         return $this;
     }

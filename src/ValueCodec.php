@@ -8,17 +8,22 @@ use DateTimeImmutable;
 use DateTimeInterface;
 use DateTimeZone;
 use InvalidArgumentException;
+use Org\Polypheny\Prism\GraphElement;
 use Org\Polypheny\Prism\ProtoBigDecimal;
 use Org\Polypheny\Prism\ProtoBinary;
 use Org\Polypheny\Prism\ProtoBoolean;
 use Org\Polypheny\Prism\ProtoDate;
 use Org\Polypheny\Prism\ProtoDocument;
 use Org\Polypheny\Prism\ProtoDouble;
+use Org\Polypheny\Prism\ProtoEdge;
+use Org\Polypheny\Prism\ProtoGraph;
 use Org\Polypheny\Prism\ProtoInteger;
 use Org\Polypheny\Prism\ProtoInterval;
 use Org\Polypheny\Prism\ProtoList;
 use Org\Polypheny\Prism\ProtoLong;
+use Org\Polypheny\Prism\ProtoNode;
 use Org\Polypheny\Prism\ProtoNull;
+use Org\Polypheny\Prism\ProtoPath;
 use Org\Polypheny\Prism\ProtoString;
 use Org\Polypheny\Prism\ProtoTime;
 use Org\Polypheny\Prism\ProtoTimestamp;
@@ -46,6 +51,15 @@ final class ValueCodec
     public static function decodeDocument(ProtoDocument $document): stdClass
     {
         return self::decodeFields($document, 0);
+    }
+
+    public static function decodeGraphElement(GraphElement $element): Node|Edge
+    {
+        return match ($element->getElement()) {
+            'node' => self::decodeNode($element->getNode(), 0),
+            'edge' => self::decodeEdge($element->getEdge(), 0),
+            default => throw new UnexpectedValueException('Prism graph element has no node or edge.'),
+        };
     }
 
     private static function encodeValue(mixed $value, int $depth): ProtoValue
@@ -76,6 +90,10 @@ final class ValueCodec
             $value instanceof Interval => $proto->setInterval(
                 (new ProtoInterval())->setMonths($value->months)->setMilliseconds($value->milliseconds),
             ),
+            $value instanceof Node => $proto->setNode(self::encodeNode($value, $depth)),
+            $value instanceof Edge => $proto->setEdge(self::encodeEdge($value, $depth)),
+            $value instanceof Path => $proto->setPath(self::encodePath($value, $depth)),
+            $value instanceof Graph => $proto->setGraph(self::encodeGraph($value, $depth)),
             is_array($value) && array_is_list($value) => $proto->setList(self::encodeList($value, $depth)),
             is_array($value), $value instanceof stdClass => $proto->setDocument(self::encodeFields($value, $depth)),
             default => throw new InvalidArgumentException('Unsupported Prism parameter type: ' . get_debug_type($value)),
@@ -111,8 +129,126 @@ final class ValueCodec
             ),
             'list' => self::decodeList($value->getList(), $depth),
             'document' => self::decodeFields($value->getDocument(), $depth),
+            'node' => self::decodeNode($value->getNode(), $depth),
+            'edge' => self::decodeEdge($value->getEdge(), $depth),
+            'path' => self::decodePath($value->getPath(), $depth),
+            'graph' => self::decodeGraph($value->getGraph(), $depth),
             default => throw new UnexpectedValueException('Prism value has no supported type.'),
         };
+    }
+
+    private static function encodeNode(Node $node, int $depth): ProtoNode
+    {
+        if ($depth > self::MAX_NESTING) {
+            throw new InvalidArgumentException('Prism parameter nesting exceeds 100 levels.');
+        }
+        return (new ProtoNode())
+            ->setId($node->id)
+            ->setName($node->name)
+            ->setLabels($node->labels)
+            ->setProperties(self::encodeFields($node->properties, $depth)->getEntries());
+    }
+
+    private static function decodeNode(ProtoNode $node, int $depth): Node
+    {
+        if ($depth > self::MAX_NESTING) {
+            throw new UnexpectedValueException('Prism result nesting exceeds 100 levels.');
+        }
+        return new Node(
+            id: $node->getId(),
+            name: $node->getName(),
+            properties: self::decodeProperties($node->getProperties(), $depth),
+            labels: iterator_to_array($node->getLabels(), false),
+        );
+    }
+
+    private static function encodeEdge(Edge $edge, int $depth): ProtoEdge
+    {
+        if ($depth > self::MAX_NESTING) {
+            throw new InvalidArgumentException('Prism parameter nesting exceeds 100 levels.');
+        }
+        return (new ProtoEdge())
+            ->setId($edge->id)
+            ->setName($edge->name)
+            ->setLabels($edge->labels)
+            ->setLeft($edge->left)
+            ->setRight($edge->right)
+            ->setDirection($edge->direction->value)
+            ->setProperties(self::encodeFields($edge->properties, $depth)->getEntries());
+    }
+
+    private static function decodeEdge(ProtoEdge $edge, int $depth): Edge
+    {
+        if ($depth > self::MAX_NESTING) {
+            throw new UnexpectedValueException('Prism result nesting exceeds 100 levels.');
+        }
+        $direction = EdgeDirection::tryFrom($edge->getDirection());
+        if ($direction === null) {
+            throw new UnexpectedValueException('Prism edge has an unknown direction: ' . $edge->getDirection());
+        }
+        return new Edge(
+            id: $edge->getId(),
+            name: $edge->getName(),
+            properties: self::decodeProperties($edge->getProperties(), $depth),
+            labels: iterator_to_array($edge->getLabels(), false),
+            left: $edge->getLeft(),
+            right: $edge->getRight(),
+            direction: $direction,
+        );
+    }
+
+    private static function encodePath(Path $path, int $depth): ProtoPath
+    {
+        return (new ProtoPath())
+            ->setNodes(array_map(static fn (Node $node): ProtoNode => self::encodeNode($node, $depth + 1), $path->nodes))
+            ->setEdges(array_map(static fn (Edge $edge): ProtoEdge => self::encodeEdge($edge, $depth + 1), $path->edges));
+    }
+
+    private static function decodePath(ProtoPath $path, int $depth): Path
+    {
+        $nodes = [];
+        foreach ($path->getNodes() as $node) {
+            $nodes[] = self::decodeNode($node, $depth + 1);
+        }
+        $edges = [];
+        foreach ($path->getEdges() as $edge) {
+            $edges[] = self::decodeEdge($edge, $depth + 1);
+        }
+        try {
+            return new Path($nodes, $edges);
+        } catch (InvalidArgumentException $error) {
+            throw new UnexpectedValueException('Invalid Prism path: ' . $error->getMessage(), previous: $error);
+        }
+    }
+
+    private static function encodeGraph(Graph $graph, int $depth): ProtoGraph
+    {
+        return (new ProtoGraph())
+            ->setNodes(array_map(static fn (Node $node): ProtoNode => self::encodeNode($node, $depth + 1), $graph->nodes))
+            ->setEdges(array_map(static fn (Edge $edge): ProtoEdge => self::encodeEdge($edge, $depth + 1), $graph->edges));
+    }
+
+    private static function decodeGraph(ProtoGraph $graph, int $depth): Graph
+    {
+        $nodes = [];
+        foreach ($graph->getNodes() as $node) {
+            $nodes[] = self::decodeNode($node, $depth + 1);
+        }
+        $edges = [];
+        foreach ($graph->getEdges() as $edge) {
+            $edges[] = self::decodeEdge($edge, $depth + 1);
+        }
+        return new Graph($nodes, $edges);
+    }
+
+    /** @return array<string, mixed> */
+    private static function decodeProperties(iterable $properties, int $depth): array
+    {
+        $decoded = [];
+        foreach ($properties as $key => $value) {
+            $decoded[(string) $key] = self::decodeValue($value, $depth + 1);
+        }
+        return $decoded;
     }
 
     private static function encodeList(array $value, int $depth): ProtoList

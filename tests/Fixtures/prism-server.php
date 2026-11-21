@@ -4,10 +4,19 @@ declare(strict_types=1);
 
 use Org\Polypheny\Prism\CommitResponse;
 use Org\Polypheny\Prism\ConnectionCheckResponse;
+use Org\Polypheny\Prism\ConnectionResponse;
+use Org\Polypheny\Prism\CloseStatementResponse;
+use Org\Polypheny\Prism\DisconnectResponse;
 use Org\Polypheny\Prism\ErrorResponse;
+use Org\Polypheny\Prism\Frame;
+use Org\Polypheny\Prism\GraphElement;
+use Org\Polypheny\Prism\GraphFrame;
+use Org\Polypheny\Prism\ProtoNode;
 use Org\Polypheny\Prism\Request;
 use Org\Polypheny\Prism\Response;
+use Org\Polypheny\Prism\RollbackResponse;
 use Org\Polypheny\Prism\StatementResponse;
+use Org\Polypheny\Prism\StatementResult;
 
 require dirname(__DIR__, 2) . '/vendor/autoload.php';
 
@@ -107,6 +116,42 @@ try {
             throw new RuntimeException('Expected a new correlation ID after the failed statement.');
         }
         sendResponse($peer, (new Response())->setId($commit->getId())->setLast(true)->setCommitResponse(new CommitResponse()));
+        exit(0);
+    }
+
+    if ($scenario === 'legacy-graph') {
+        $connect = readRequest($peer, 'connection_request');
+        $version = $connect->getConnectionRequest();
+        if ($version->getMajorApiVersion() !== 2 || $version->getMinorApiVersion() !== 3) {
+            throw new RuntimeException('The driver did not advertise Prism 2.3.');
+        }
+        sendResponse($peer, (new Response())->setId($connect->getId())->setLast(true)->setConnectionResponse(
+            (new ConnectionResponse())->setMajorApiVersion(2)->setMinorApiVersion(2)->setIsCompatible(true),
+        ));
+
+        $statement = readRequest($peer, 'execute_unparameterized_statement_request');
+        $firstPage = (new Frame())->setGraphFrame(new GraphFrame())->setIsLast(false);
+        sendResponse($peer, (new Response())->setId($statement->getId())->setLast(true)->setStatementResponse(
+            (new StatementResponse())->setStatementId(7)->setResult((new StatementResult())->setFrame($firstPage)),
+        ));
+
+        $fetch = readRequest($peer, 'fetch_request');
+        if ((int) $fetch->getFetchRequest()->getStatementId() !== 7 || $fetch->getFetchRequest()->getFetchSize() !== 1) {
+            throw new RuntimeException('The driver did not preserve the cursor ID and fetch size.');
+        }
+        $node = (new GraphElement())->setNode((new ProtoNode())->setId('legacy')->setLabels(['Person']));
+        $lastPage = (new Frame())->setGraphFrame((new GraphFrame())->setElement([$node]))->setIsLast(true);
+        sendResponse($peer, (new Response())->setId($fetch->getId())->setLast(true)->setFrame($lastPage));
+
+        $close = readRequest($peer, 'close_statement_request');
+        sendResponse($peer, (new Response())->setId($close->getId())->setLast(true)
+            ->setCloseStatementResponse(new CloseStatementResponse()));
+        $rollback = readRequest($peer, 'rollback_request');
+        sendResponse($peer, (new Response())->setId($rollback->getId())->setLast(true)
+            ->setRollbackResponse(new RollbackResponse()));
+        $disconnect = readRequest($peer, 'disconnect_request');
+        sendResponse($peer, (new Response())->setId($disconnect->getId())->setLast(true)
+            ->setDisconnectResponse(new DisconnectResponse()));
         exit(0);
     }
 

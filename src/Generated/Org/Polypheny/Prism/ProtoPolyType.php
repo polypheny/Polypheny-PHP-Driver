@@ -154,25 +154,25 @@ class ProtoPolyType
      */
     const DOCUMENT = 35;
     /**
-     * Graph type. Returned by a query in the graph data model.
+     * A graph value containing nodes and edges.
      *
      * Generated from protobuf enum <code>GRAPH = 36;</code>
      */
     const GRAPH = 36;
     /**
-     * Graph node type. Used inside the graph type to represent a graphs nodes.
+     * A node in a labeled property graph.
      *
      * Generated from protobuf enum <code>NODE = 37;</code>
      */
     const NODE = 37;
     /**
-     * Graph edge type. Used inside the graph type to represent a graphs edges.
+     * An edge in a labeled property graph.
      *
      * Generated from protobuf enum <code>EDGE = 38;</code>
      */
     const EDGE = 38;
     /**
-     * Graph path type. Used in results of the graph data model to return a the result of graph queries returning a path.
+     * An ordered path through a labeled property graph.
      *
      * Generated from protobuf enum <code>PATH = 39;</code>
      */

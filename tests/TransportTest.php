@@ -12,7 +12,9 @@ use Org\Polypheny\Prism\ExecuteUnparameterizedStatementRequest;
 use Org\Polypheny\Prism\Response;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
+use Polypheny\Connection;
 use Polypheny\DriverException;
+use Polypheny\Node;
 use Polypheny\ProtocolException;
 use Polypheny\Rpc;
 use Polypheny\ServerException;
@@ -54,6 +56,26 @@ final class TransportTest extends TestCase
             self::markTestSkipped('Unix domain sockets are unavailable.');
         }
         $this->assertFragmentedRoundTrip($this->startServer('fragmented', unix: true));
+    }
+
+    public function testPrism23ClientReadsLegacyGraphFramesFromACompatiblePrism22Server(): void
+    {
+        $port = $this->startFixture('legacy-graph');
+        $connection = Connection::connectTcp(port: $port, timeout: 5);
+        try {
+            self::assertSame('2.2', $connection->serverVersion());
+            $cursor = $connection->cursor()->executeAny('cypher', 'MATCH (n) RETURN n', fetchSize: 1);
+            self::assertNull($cursor->description());
+            self::assertSame(-1, $cursor->rowCount());
+
+            $node = $cursor->fetchOne();
+            self::assertInstanceOf(Node::class, $node);
+            self::assertSame('legacy', $node->id);
+            self::assertSame(['Person'], $node->labels);
+            self::assertNull($cursor->fetchOne());
+        } finally {
+            $connection->close();
+        }
     }
 
     public function testInvalidTransportGreetingIsRejected(): void
@@ -117,6 +139,16 @@ final class TransportTest extends TestCase
 
     private function startServer(string $scenario, bool $unix = false): Rpc
     {
+        $port = $this->startFixture($scenario, $unix);
+        $this->transport = $unix
+            ? Transport::unix($this->socketPath, timeout: 5)
+            : Transport::tcp('127.0.0.1', $port, timeout: 5);
+
+        return new Rpc($this->transport);
+    }
+
+    private function startFixture(string $scenario, bool $unix = false): int
+    {
         if (!function_exists('proc_open')) {
             self::markTestSkipped('Starting the Prism fixture requires proc_open.');
         }
@@ -139,10 +171,6 @@ final class TransportTest extends TestCase
 
         $endpoint = fgets($this->fixturePipes[1]);
         self::assertNotFalse($endpoint, 'The test server did not report a ready endpoint.');
-        $this->transport = $unix
-            ? Transport::unix($this->socketPath, timeout: 5)
-            : Transport::tcp('127.0.0.1', (int) trim($endpoint), timeout: 5);
-
-        return new Rpc($this->transport);
+        return (int) trim($endpoint);
     }
 }

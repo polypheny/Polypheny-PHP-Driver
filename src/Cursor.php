@@ -12,6 +12,7 @@ use Org\Polypheny\Prism\ExecuteNamedStatementRequest;
 use Org\Polypheny\Prism\ExecuteUnparameterizedStatementRequest;
 use Org\Polypheny\Prism\FetchRequest;
 use Org\Polypheny\Prism\Frame;
+use Org\Polypheny\Prism\GraphElement;
 use Org\Polypheny\Prism\IndexedParameters;
 use Org\Polypheny\Prism\NamedParameters;
 use Org\Polypheny\Prism\PrepareStatementRequest;
@@ -24,14 +25,14 @@ use stdClass;
 use Throwable;
 use UnexpectedValueException;
 
-/** @implements IteratorAggregate<int, array|stdClass> */
+/** @implements IteratorAggregate<int, array|stdClass|Node|Edge> */
 final class Cursor implements IteratorAggregate
 {
     private ?int $statementId = null;
     private ?string $frameType = null;
     private ?int $fetchSize = null;
     private bool $lastFrame = true;
-    /** @var list<Row|ProtoDocument> */
+    /** @var list<Row|ProtoDocument|GraphElement> */
     private array $rows = [];
     private int $nextRow = 0;
     private ?array $description = null;
@@ -209,7 +210,7 @@ final class Cursor implements IteratorAggregate
         } elseif ($type === 'document_frame') {
             $rows = $frame->getDocumentFrame()->getDocuments();
         } elseif ($type === 'graph_frame') {
-            throw new DriverException('Graph results are not supported.');
+            $rows = $frame->getGraphFrame()->getElement();
         } else {
             throw new ProtocolException('The Prism frame has no result.');
         }
@@ -220,7 +221,7 @@ final class Cursor implements IteratorAggregate
         $this->nextRow = 0;
     }
 
-    public function fetchOne(): array|stdClass|null
+    public function fetchOne(): array|stdClass|Node|Edge|null
     {
         $connection = $this->requireOpen();
         if ($this->frameType === null) {
@@ -242,6 +243,9 @@ final class Cursor implements IteratorAggregate
         if ($row instanceof ProtoDocument) {
             return ValueCodec::decodeDocument($row);
         }
+        if ($row instanceof GraphElement) {
+            return ValueCodec::decodeGraphElement($row);
+        }
         $decoded = [];
         foreach ($row->getValues() as $value) {
             $decoded[] = ValueCodec::decode($value);
@@ -249,7 +253,7 @@ final class Cursor implements IteratorAggregate
         return $decoded;
     }
 
-    /** @return list<array|stdClass> */
+    /** @return list<array|stdClass|Node|Edge> */
     public function fetchMany(?int $size = null): array
     {
         $this->requireOpen();
@@ -264,7 +268,7 @@ final class Cursor implements IteratorAggregate
         return $rows;
     }
 
-    /** @return list<array|stdClass> */
+    /** @return list<array|stdClass|Node|Edge> */
     public function fetchAll(): array
     {
         return iterator_to_array($this->getIterator(), false);
