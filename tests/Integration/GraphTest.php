@@ -7,6 +7,7 @@ namespace Polypheny\Tests\Integration;
 use PHPUnit\Framework\TestCase;
 use Polypheny\Connection;
 use Polypheny\Cursor;
+use Polypheny\DriverException;
 use Polypheny\Edge;
 use Polypheny\EdgeDirection;
 use Polypheny\Node;
@@ -186,6 +187,44 @@ final class GraphTest extends TestCase
         self::assertEdge($path->edges[1], $path->nodes[1], $path->nodes[2], 2021);
     }
 
+    public function testReversePathKeepsTraversalOrderAndStoredEdgeOrientation(): void
+    {
+        $cursor = $this->query("MATCH p=(:Person {name: 'Charlie'})<-[:KNOWS*1..3]-(:Person {name: 'Alice'}) RETURN p, 'reverse' AS title");
+        self::assertSame(['p', 'title'], array_column($cursor->description(), 'name'));
+        $rows = $cursor->fetchAll();
+        self::assertCount(1, $rows);
+        [$path, $title] = $rows[0];
+        self::assertInstanceOf(Path::class, $path);
+        self::assertSame('reverse', $title);
+        self::assertCount(3, $path->nodes);
+        self::assertCount(2, $path->edges);
+        self::assertNode($path->nodes[0], 'Charlie', 3);
+        self::assertNode($path->nodes[1], 'Bob', 2);
+        self::assertNode($path->nodes[2], 'Alice', 1);
+        self::assertEdge($path->edges[0], $path->nodes[1], $path->nodes[0], 2021);
+        self::assertEdge($path->edges[1], $path->nodes[2], $path->nodes[1], 2020);
+    }
+
+    public function testMixedAliasesKeepVariableNamesAndANullScalarCell(): void
+    {
+        $cursor = $this->query("MATCH (a:Person {name: 'Alice'})-[r:KNOWS]->(b:Person) RETURN a AS source, r AS relationship, b AS target, null AS missing");
+        $description = $cursor->description();
+        self::assertSame(['source', 'relationship', 'target', 'missing'], array_column($description, 'name'));
+        self::assertSame(['NODE', 'EDGE', 'NODE'], array_slice(array_column($description, 'type'), 0, 3));
+        self::assertTrue($description[3]['nullable']);
+        $rows = $cursor->fetchAll();
+        self::assertCount(1, $rows);
+        self::assertCount(4, $rows[0]);
+        [$alice, $edge, $bob, $missing] = $rows[0];
+        self::assertNode($alice, 'Alice', 1);
+        self::assertNode($bob, 'Bob', 2);
+        self::assertEdge($edge, $alice, $bob, 2020);
+        self::assertSame(['a', 'r', 'b'], [$alice->name, $edge->name, $bob->name]);
+        self::assertNull($missing);
+        self::assertSame($description, $cursor->description());
+        self::assertNull($cursor->fetchOne());
+    }
+
     public function testScalarProjectionsUseRelationalRowsAndEmptyResultsKeepTheirContract(): void
     {
         $cursor = $this->query('MATCH (n:Person) RETURN n.name AS name ORDER BY name');
@@ -245,6 +284,33 @@ final class GraphTest extends TestCase
         } finally {
             $connection->close();
         }
+    }
+
+    public function testRolledBackGraphFetchDiscardsFailedStateAndAllowsReexecution(): void
+    {
+        $query = 'MATCH (n:Person) RETURN n ORDER BY n.id';
+        $cursor = $this->query($query);
+        self::assertNode($cursor->fetchOne(), 'Alice', 1);
+        $this->connection->rollback();
+
+        try {
+            $cursor->fetchOne();
+            self::fail('Fetching after rollback must report that the server result is closed.');
+        } catch (ServerException $error) {
+            self::assertStringContainsString('No open Cypher result exists for this statement', $error->getMessage());
+        }
+        try {
+            $cursor->fetchOne();
+            self::fail('A failed fetch must clear the local result state.');
+        } catch (DriverException $error) {
+            self::assertSame('There is no result set to fetch.', $error->getMessage());
+        }
+
+        $cursor->executeAny('cypher', $query, fetchSize: 1, namespace: $this->namespace);
+        self::assertSame(['Alice', 'Bob', 'Charlie'], array_map(
+            static fn (Node $node): string => $node->properties['name'],
+            $cursor->fetchAll(),
+        ));
     }
 
     public function testGraphEntityMetadataAndSingleStatementErrorsLeaveTheConnectionUsable(): void
