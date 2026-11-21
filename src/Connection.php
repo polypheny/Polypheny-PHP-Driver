@@ -20,7 +20,7 @@ use WeakMap;
 final class Connection
 {
     public const PRISM_MAJOR = 2;
-    public const PRISM_MINOR = 2;
+    public const PRISM_MINOR = 3;
 
     /** @var WeakMap<Cursor, true> */
     private WeakMap $cursors;
@@ -75,7 +75,8 @@ final class Connection
             }
             $server = $response->getMajorApiVersion() . '.' . $response->getMinorApiVersion();
             if (!$response->getIsCompatible()) {
-                throw new ProtocolException('Prism server ' . $server . ' is incompatible with this Prism 2.2 client.');
+                throw new ProtocolException('Prism server ' . $server . ' is incompatible with this Prism '
+                    . self::PRISM_MAJOR . '.' . self::PRISM_MINOR . ' client.');
             }
 
             return new self($rpc, $server);

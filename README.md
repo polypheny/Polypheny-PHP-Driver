@@ -1,7 +1,7 @@
 # Polypheny PHP Driver
 
 A PHP client for [Polypheny](https://polypheny.com/) using the Prism query interface.
-It requires 64-bit PHP 8.2 or later and uses the published Prism 2.2 schema.
+It requires 64-bit PHP 8.2 or later and uses the published Prism 2.3 schema.
 The server decides whether its Prism version is compatible during connection.
 Document collection metadata requires a server with Prism 2.2 document metadata support.
 
@@ -46,11 +46,11 @@ try {
 manual transactions by default. Call `commit()` or `rollback()`, or pass
 `autoCommit: true` when opening the connection. Closing the connection releases
 its cursors and rolls back pending work. Polypheny may commit DDL automatically.
-When a query spans several frames, call `commit()` or `rollback()` explicitly
-after consuming the results, even in auto-commit mode.
+On current Polypheny servers, auto-commit completes after the last result frame
+is fetched or all open results for the transaction are closed.
 
 `execute()` runs SQL. `executeAny()` accepts a Prism language name such as
-`mongo`, `cql` or `pig`, and an optional namespace. A list binds positional
+`mongo`, `cypher`, `cql` or `pig`, and an optional namespace. A list binds positional
 parameters, and a string-keyed array binds named parameters, where supported by
 the query language. `executeMany()` runs SQL for each binding set and leaves the
 last result on the cursor.
@@ -59,12 +59,21 @@ For a document namespace named `shop` with a collection named `orders`, use
 `$cursor->executeAny('mongo', 'db.orders.find({})', fetchSize: 10, namespace: 'shop')`.
 
 `fetchOne()` returns a positional array for a relational row, a `stdClass` for a
-document, or `null` at the end of a result set. `fetchMany()`, `fetchAll()` and
+document, a `Node` or `Edge` for a flat graph stream, or `null` at the end
+of a result set. `fetchMany()`, `fetchAll()` and
 iteration fetch more Prism frames as needed. `setArraySize()` changes the default
 row count for `fetchMany()`. `description()` returns column metadata for relational
 results. `rowCount()` returns the scalar result of a statement or `-1` when a
 result set is returned. Omit `fetchSize` or pass `0` to use the server's batch
 size. Pass `-1` to request the entire result in one frame.
+
+Run Cypher with `executeAny('cypher', $query, namespace: $graphNamespace)`
+against a server with Prism graph support. Graph-only projections stream
+`Node` and `Edge` objects, including elements along a path. Mixed projections
+such as `RETURN n, n.name` require Prism 2.3 on the server and preserve columns
+as PHP arrays containing typed graph values and scalars. The driver decodes
+`Node`, `Edge`, `Path` and `Graph` cells, including inside lists and documents.
+The current server accepts unparameterized Cypher over Prism.
 
 ## Values and metadata
 
@@ -107,7 +116,7 @@ composer test
 POLYPHENY_TEST_INTEGRATION=1 composer test:integration
 ```
 
-The integration suite runs against a Prism 2.2 Polypheny instance. Its defaults
+The integration suite runs against a Prism 2.3 Polypheny instance. Its defaults
 are TCP host `127.0.0.1`, port `20590`, user `pa` and an empty password.
 Set `POLYPHENY_TEST_HOST`, `POLYPHENY_TEST_PORT`, `POLYPHENY_TEST_USER` and
 `POLYPHENY_TEST_PASSWORD` to override them. `POLYPHENY_TEST_SOCKET` enables a
@@ -116,6 +125,6 @@ reachable from both the test process and Polypheny. Set
 `POLYPHENY_TEST_MONGOSH` to a shell executable and, if needed,
 `POLYPHENY_TEST_MONGO_HOST` and `POLYPHENY_TEST_MONGO_PORT`.
 
-The schema in `proto/` is from the [Prism 2.2 release](https://github.com/polypheny/Polypheny-Prism-API/tree/2.2/org/polypheny/prism)
-at commit `ecbefcb359c017038ded4fad1d03321ebcfbb8a4`. To regenerate the PHP
+The schema in `proto/` is from the [Prism 2.3 release](https://github.com/polypheny/Polypheny-Prism-API/tree/2.3/org/polypheny/prism)
+at commit `25ddc2872af07807fd8742f19b59df96a4a14b15`. To regenerate the PHP
 bindings, run `scripts/generate-proto.sh` with protoc 28.2.
