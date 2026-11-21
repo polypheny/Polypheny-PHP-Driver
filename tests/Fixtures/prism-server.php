@@ -12,6 +12,7 @@ use Org\Polypheny\Prism\Frame;
 use Org\Polypheny\Prism\GraphElement;
 use Org\Polypheny\Prism\GraphFrame;
 use Org\Polypheny\Prism\ProtoNode;
+use Org\Polypheny\Prism\RelationalFrame;
 use Org\Polypheny\Prism\Request;
 use Org\Polypheny\Prism\Response;
 use Org\Polypheny\Prism\RollbackResponse;
@@ -119,14 +120,15 @@ try {
         exit(0);
     }
 
-    if ($scenario === 'legacy-graph') {
+    if (in_array($scenario, ['legacy-graph', 'graph-fetch-error', 'malformed-graph-page', 'wrong-graph-frame'], true)) {
         $connect = readRequest($peer, 'connection_request');
         $version = $connect->getConnectionRequest();
         if ($version->getMajorApiVersion() !== 2 || $version->getMinorApiVersion() !== 3) {
             throw new RuntimeException('The driver did not advertise Prism 2.3.');
         }
         sendResponse($peer, (new Response())->setId($connect->getId())->setLast(true)->setConnectionResponse(
-            (new ConnectionResponse())->setMajorApiVersion(2)->setMinorApiVersion(2)->setIsCompatible(true),
+            (new ConnectionResponse())->setMajorApiVersion(2)->setMinorApiVersion($scenario === 'legacy-graph' ? 2 : 3)
+                ->setIsCompatible(true),
         ));
 
         $statement = readRequest($peer, 'execute_unparameterized_statement_request');
@@ -140,12 +142,36 @@ try {
             throw new RuntimeException('The driver did not preserve the cursor ID and fetch size.');
         }
         $node = (new GraphElement())->setNode((new ProtoNode())->setId('legacy')->setLabels(['Person']));
-        $lastPage = (new Frame())->setGraphFrame((new GraphFrame())->setElement([$node]))->setIsLast(true);
-        sendResponse($peer, (new Response())->setId($fetch->getId())->setLast(true)->setFrame($lastPage));
+        $pagedResponse = (new Response())->setId($fetch->getId())->setLast(true);
+        $frame = (new Frame())->setIsLast(true);
+        $pagedResponse = match ($scenario) {
+            'graph-fetch-error' => $pagedResponse->setErrorResponse(
+                (new ErrorResponse())->setMessage('Graph result failed during fetch.'),
+            ),
+            'wrong-graph-frame' => $pagedResponse->setFrame($frame->setRelationalFrame(new RelationalFrame())),
+            'malformed-graph-page' => $pagedResponse->setFrame(
+                $frame->setGraphFrame((new GraphFrame())->setElement([new GraphElement(), $node])),
+            ),
+            default => $pagedResponse->setFrame($frame->setGraphFrame((new GraphFrame())->setElement([$node]))),
+        };
+        sendResponse($peer, $pagedResponse);
 
         $close = readRequest($peer, 'close_statement_request');
+        if ((int) $close->getCloseStatementRequest()->getStatementId() !== 7) {
+            throw new RuntimeException('The driver did not close the affected graph statement.');
+        }
         sendResponse($peer, (new Response())->setId($close->getId())->setLast(true)
             ->setCloseStatementResponse(new CloseStatementResponse()));
+
+        if ($scenario !== 'legacy-graph') {
+            $retry = readRequest($peer, 'execute_unparameterized_statement_request');
+            sendResponse($peer, (new Response())->setId($retry->getId())->setLast(true)->setStatementResponse(
+                (new StatementResponse())->setStatementId(8)->setResult((new StatementResult())->setScalar(1)),
+            ));
+            $close = readRequest($peer, 'close_statement_request');
+            sendResponse($peer, (new Response())->setId($close->getId())->setLast(true)
+                ->setCloseStatementResponse(new CloseStatementResponse()));
+        }
         $rollback = readRequest($peer, 'rollback_request');
         sendResponse($peer, (new Response())->setId($rollback->getId())->setLast(true)
             ->setRollbackResponse(new RollbackResponse()));

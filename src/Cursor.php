@@ -78,11 +78,7 @@ final class Cursor implements IteratorAggregate
                 $this->rowCount = (int) $result->getScalar();
             }
         } catch (Throwable $error) {
-            try {
-                $this->reset();
-            } catch (Throwable) {
-                // Preserve the original failure when releasing the failed statement.
-            }
+            $this->discardFailedStatement();
             throw $error;
         }
 
@@ -228,29 +224,34 @@ final class Cursor implements IteratorAggregate
             throw new DriverException('There is no result set to fetch.');
         }
 
-        while (!isset($this->rows[$this->nextRow])) {
-            if ($this->lastFrame) {
-                return null;
+        try {
+            while (!isset($this->rows[$this->nextRow])) {
+                if ($this->lastFrame) {
+                    return null;
+                }
+                $request = (new FetchRequest())->setStatementId($this->statementId);
+                if ($this->fetchSize !== null) {
+                    $request->setFetchSize($this->fetchSize);
+                }
+                $this->acceptFrame($connection->request('FetchRequest', $request, 'Frame'));
             }
-            $request = (new FetchRequest())->setStatementId($this->statementId);
-            if ($this->fetchSize !== null) {
-                $request->setFetchSize($this->fetchSize);
-            }
-            $this->acceptFrame($connection->request('FetchRequest', $request, 'Frame'));
-        }
 
-        $row = $this->rows[$this->nextRow++];
-        if ($row instanceof ProtoDocument) {
-            return ValueCodec::decodeDocument($row);
+            $row = $this->rows[$this->nextRow++];
+            if ($row instanceof ProtoDocument) {
+                return ValueCodec::decodeDocument($row);
+            }
+            if ($row instanceof GraphElement) {
+                return ValueCodec::decodeGraphElement($row);
+            }
+            $decoded = [];
+            foreach ($row->getValues() as $value) {
+                $decoded[] = ValueCodec::decode($value);
+            }
+            return $decoded;
+        } catch (Throwable $error) {
+            $this->discardFailedStatement();
+            throw $error;
         }
-        if ($row instanceof GraphElement) {
-            return ValueCodec::decodeGraphElement($row);
-        }
-        $decoded = [];
-        foreach ($row->getValues() as $value) {
-            $decoded[] = ValueCodec::decode($value);
-        }
-        return $decoded;
     }
 
     /** @return list<array|stdClass|Node|Edge> */
@@ -324,6 +325,15 @@ final class Cursor implements IteratorAggregate
             $this->close();
         } catch (Throwable) {
             // Use close() explicitly to handle errors during cleanup.
+        }
+    }
+
+    private function discardFailedStatement(): void
+    {
+        try {
+            $this->reset();
+        } catch (Throwable) {
+            // Preserve the original failure when releasing the failed statement.
         }
     }
 

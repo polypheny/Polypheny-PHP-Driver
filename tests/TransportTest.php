@@ -19,6 +19,7 @@ use Polypheny\ProtocolException;
 use Polypheny\Rpc;
 use Polypheny\ServerException;
 use Polypheny\Transport;
+use UnexpectedValueException;
 
 final class TransportTest extends TestCase
 {
@@ -73,6 +74,51 @@ final class TransportTest extends TestCase
             self::assertSame('legacy', $node->id);
             self::assertSame(['Person'], $node->labels);
             self::assertNull($cursor->fetchOne());
+        } finally {
+            $connection->close();
+        }
+    }
+
+    /** @return iterable<string, array{string, class-string<\Throwable>, string}> */
+    public static function graphFetchFailures(): iterable
+    {
+        yield 'server error' => ['graph-fetch-error', ServerException::class, 'Graph result failed during fetch.'];
+        yield 'invalid element' => [
+            'malformed-graph-page', UnexpectedValueException::class, 'Prism graph element has no node or edge.',
+        ];
+        yield 'frame type changes' => [
+            'wrong-graph-frame', ProtocolException::class, 'The result type changed between Prism frames.',
+        ];
+    }
+
+    /** @param class-string<\Throwable> $expectedException */
+    #[DataProvider('graphFetchFailures')]
+    public function testGraphFetchFailureDiscardsTheResultAndAllowsCursorReuse(
+        string $scenario,
+        string $expectedException,
+        string $expectedMessage,
+    ): void {
+        $port = $this->startFixture($scenario);
+        $connection = Connection::connectTcp(port: $port, timeout: 5);
+        try {
+            $cursor = $connection->cursor()->executeAny('cypher', 'MATCH (n) RETURN n', fetchSize: 1);
+            try {
+                $cursor->fetchOne();
+                self::fail('The invalid graph result was accepted.');
+            } catch (ServerException | ProtocolException | UnexpectedValueException $error) {
+                self::assertInstanceOf($expectedException, $error);
+                self::assertSame($expectedMessage, $error->getMessage());
+            }
+
+            try {
+                $cursor->fetchOne();
+                self::fail('The cursor retained the failed result.');
+            } catch (DriverException $error) {
+                self::assertSame('There is no result set to fetch.', $error->getMessage());
+            }
+            self::assertFalse($connection->isClosed());
+            $cursor->executeAny('cypher', 'CREATE (:Recovered)');
+            self::assertSame(1, $cursor->rowCount());
         } finally {
             $connection->close();
         }
