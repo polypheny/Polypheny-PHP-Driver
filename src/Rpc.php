@@ -43,12 +43,18 @@ final class Rpc
 
         while (true) {
             $response = $this->readResponse($requestId);
-            if ($response->getErrorResponse() !== null) {
+            $error = $response->getErrorResponse();
+            if ($error !== null) {
                 if (!$response->getLast()) {
                     $this->close();
                     throw new ProtocolException('Prism sent a non-final error response.');
                 }
-                throw new ServerException($response->getErrorResponse()->getMessage());
+                $details = $error->getDetails();
+                throw new ServerException(
+                    $error->getMessage(),
+                    sqlState: $details?->hasState() ? $details->getState() : null,
+                    serverErrorCode: $details?->hasErrorCode() ? $details->getErrorCode() : null,
+                );
             }
             if ($response->getLast()) {
                 return $response;

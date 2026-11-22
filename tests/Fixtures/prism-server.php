@@ -7,6 +7,7 @@ use Org\Polypheny\Prism\ConnectionCheckResponse;
 use Org\Polypheny\Prism\ConnectionResponse;
 use Org\Polypheny\Prism\CloseStatementResponse;
 use Org\Polypheny\Prism\DisconnectResponse;
+use Org\Polypheny\Prism\ErrorDetails;
 use Org\Polypheny\Prism\ErrorResponse;
 use Org\Polypheny\Prism\Frame;
 use Org\Polypheny\Prism\GraphElement;
@@ -71,6 +72,45 @@ function sendResponse($peer, Response $response): void
     sendFragments($peer, pack('V2', strlen($data), 0) . $data);
 }
 
+/** @param resource $peer */
+function readConnectionRequest($peer): Request
+{
+    $connect = readRequest($peer, 'connection_request');
+    $version = $connect->getConnectionRequest();
+    if ($version->getMajorApiVersion() !== 2 || $version->getMinorApiVersion() !== 4) {
+        throw new RuntimeException('The driver did not advertise Prism 2.4.');
+    }
+    return $connect;
+}
+
+/** @param resource $peer */
+function acceptConnection($peer, int $minorVersion): void
+{
+    $connect = readConnectionRequest($peer);
+    sendResponse($peer, (new Response())->setId($connect->getId())->setLast(true)->setConnectionResponse(
+        (new ConnectionResponse())->setMajorApiVersion(2)->setMinorApiVersion($minorVersion)->setIsCompatible(true),
+    ));
+}
+
+/** @param resource $peer */
+function finishConnection($peer): void
+{
+    $rollback = readRequest($peer, 'rollback_request');
+    sendResponse($peer, (new Response())->setId($rollback->getId())->setLast(true)
+        ->setRollbackResponse(new RollbackResponse()));
+    $disconnect = readRequest($peer, 'disconnect_request');
+    sendResponse($peer, (new Response())->setId($disconnect->getId())->setLast(true)
+        ->setDisconnectResponse(new DisconnectResponse()));
+}
+
+/** @param resource $peer */
+function expectClosedTransport($peer): void
+{
+    if (fread($peer, 1) !== '' || !feof($peer)) {
+        throw new RuntimeException('The driver did not close the transport.');
+    }
+}
+
 $scenario = $argv[1];
 $socketPath = $argv[2] ?? null;
 
@@ -103,33 +143,47 @@ try {
         throw new RuntimeException('The client did not echo the Prism greeting.');
     }
 
-    if ($scenario === 'statement-error') {
+    if ($scenario === 'login-error') {
+        $connect = readConnectionRequest($peer);
+        sendResponse($peer, (new Response())->setId($connect->getId())->setLast(true)->setErrorResponse(
+            (new ErrorResponse())->setMessage('Wrong username or password')->setDetails(
+                (new ErrorDetails())->setState('28000'),
+            ),
+        ));
+        expectClosedTransport($peer);
+        exit(0);
+    }
+
+    if ($scenario === 'statement-error' || $scenario === 'legacy-statement-error') {
+        acceptConnection($peer, $scenario === 'legacy-statement-error' ? 3 : 4);
         $statement = readRequest($peer, 'execute_unparameterized_statement_request');
         sendResponse($peer, (new Response())->setId($statement->getId())->setStatementResponse(
             (new StatementResponse())->setStatementId(7),
         ));
-        sendResponse($peer, (new Response())->setId($statement->getId())->setLast(true)->setErrorResponse(
-            (new ErrorResponse())->setMessage('Expected test error'),
-        ));
+        $error = (new ErrorResponse())->setMessage("Expected test error (SQLSTATE 22012, code 42)\n");
+        if ($scenario === 'statement-error') {
+            $error->setDetails((new ErrorDetails())->setState('XX000')->setErrorCode(0)->setMessage('Different text'));
+        }
+        sendResponse($peer, (new Response())->setId($statement->getId())->setLast(true)->setErrorResponse($error));
+
+        $close = readRequest($peer, 'close_statement_request');
+        if ((int) $close->getCloseStatementRequest()->getStatementId() !== 7) {
+            throw new RuntimeException('The driver did not close the statement identified by the preliminary response.');
+        }
+        sendResponse($peer, (new Response())->setId($close->getId())->setLast(true)
+            ->setCloseStatementResponse(new CloseStatementResponse()));
 
         $commit = readRequest($peer, 'commit_request');
         if ((int) $commit->getId() <= (int) $statement->getId()) {
             throw new RuntimeException('Expected a new correlation ID after the failed statement.');
         }
         sendResponse($peer, (new Response())->setId($commit->getId())->setLast(true)->setCommitResponse(new CommitResponse()));
+        finishConnection($peer);
         exit(0);
     }
 
     if (in_array($scenario, ['legacy-graph', 'graph-fetch-error', 'malformed-graph-page', 'wrong-graph-frame'], true)) {
-        $connect = readRequest($peer, 'connection_request');
-        $version = $connect->getConnectionRequest();
-        if ($version->getMajorApiVersion() !== 2 || $version->getMinorApiVersion() !== 3) {
-            throw new RuntimeException('The driver did not advertise Prism 2.3.');
-        }
-        sendResponse($peer, (new Response())->setId($connect->getId())->setLast(true)->setConnectionResponse(
-            (new ConnectionResponse())->setMajorApiVersion(2)->setMinorApiVersion($scenario === 'legacy-graph' ? 2 : 3)
-                ->setIsCompatible(true),
-        ));
+        acceptConnection($peer, $scenario === 'legacy-graph' ? 2 : 4);
 
         $statement = readRequest($peer, 'execute_unparameterized_statement_request');
         $firstPage = (new Frame())->setGraphFrame(new GraphFrame())->setIsLast(false);
@@ -146,7 +200,9 @@ try {
         $frame = (new Frame())->setIsLast(true);
         $pagedResponse = match ($scenario) {
             'graph-fetch-error' => $pagedResponse->setErrorResponse(
-                (new ErrorResponse())->setMessage('Graph result failed during fetch.'),
+                (new ErrorResponse())->setMessage('Graph result failed during fetch.')->setDetails(
+                    (new ErrorDetails())->setErrorCode(9002),
+                ),
             ),
             'wrong-graph-frame' => $pagedResponse->setFrame($frame->setRelationalFrame(new RelationalFrame())),
             'malformed-graph-page' => $pagedResponse->setFrame(
@@ -172,12 +228,7 @@ try {
             sendResponse($peer, (new Response())->setId($close->getId())->setLast(true)
                 ->setCloseStatementResponse(new CloseStatementResponse()));
         }
-        $rollback = readRequest($peer, 'rollback_request');
-        sendResponse($peer, (new Response())->setId($rollback->getId())->setLast(true)
-            ->setRollbackResponse(new RollbackResponse()));
-        $disconnect = readRequest($peer, 'disconnect_request');
-        sendResponse($peer, (new Response())->setId($disconnect->getId())->setLast(true)
-            ->setDisconnectResponse(new DisconnectResponse()));
+        finishConnection($peer);
         exit(0);
     }
 
@@ -189,6 +240,14 @@ try {
             sendResponse($peer, (new Response())->setId($responseId)->setLast(true)->setConnectionCheckResponse(
                 new ConnectionCheckResponse(),
             ));
+            break;
+        case 'non-final-error':
+            sendResponse($peer, (new Response())->setId($request->getId())->setErrorResponse(
+                (new ErrorResponse())->setMessage('Unexpected server error')->setDetails(
+                    (new ErrorDetails())->setState('XX000'),
+                ),
+            ));
+            expectClosedTransport($peer);
             break;
         case 'oversized-frame':
             sendFragments($peer, pack('V2', 0, 1));

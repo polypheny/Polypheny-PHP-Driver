@@ -4,12 +4,8 @@ declare(strict_types=1);
 
 namespace Polypheny\Tests;
 
-use Org\Polypheny\Prism\CommitRequest;
-use Org\Polypheny\Prism\CommitResponse;
 use Org\Polypheny\Prism\ConnectionCheckRequest;
 use Org\Polypheny\Prism\ConnectionCheckResponse;
-use Org\Polypheny\Prism\ExecuteUnparameterizedStatementRequest;
-use Org\Polypheny\Prism\Response;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Polypheny\Connection;
@@ -59,7 +55,7 @@ final class TransportTest extends TestCase
         $this->assertFragmentedRoundTrip($this->startServer('fragmented', unix: true));
     }
 
-    public function testPrism23ClientReadsLegacyGraphFramesFromACompatiblePrism22Server(): void
+    public function testPrism24ClientReadsLegacyGraphFramesFromACompatiblePrism22Server(): void
     {
         $port = $this->startFixture('legacy-graph');
         $connection = Connection::connectTcp(port: $port, timeout: 5);
@@ -108,6 +104,11 @@ final class TransportTest extends TestCase
             } catch (ServerException | ProtocolException | UnexpectedValueException $error) {
                 self::assertInstanceOf($expectedException, $error);
                 self::assertSame($expectedMessage, $error->getMessage());
+                if ($error instanceof ServerException) {
+                    self::assertNull($error->getSqlState());
+                    self::assertSame(9002, $error->getServerErrorCode());
+                    self::assertSame(0, $error->getCode());
+                }
             }
 
             try {
@@ -130,27 +131,73 @@ final class TransportTest extends TestCase
         $this->startServer('invalid-handshake');
     }
 
-    public function testServerErrorPreservesTheConnectionAndPreliminaryStatementId(): void
+    public function testServerExceptionKeepsTheInheritedConstructorArguments(): void
     {
-        $rpc = $this->startServer('statement-error');
-        $statementId = null;
+        $previous = new \RuntimeException('Cause');
+        $exception = new ServerException(message: 'Original message', code: 42, previous: $previous);
 
+        self::assertSame('Original message', $exception->getMessage());
+        self::assertSame(42, $exception->getCode());
+        self::assertSame($previous, $exception->getPrevious());
+        self::assertNull($exception->getSqlState());
+        self::assertNull($exception->getServerErrorCode());
+    }
+
+    public function testConnectReportsAServerErrorWithAnOptionalCode(): void
+    {
+        $port = $this->startFixture('login-error');
         try {
-            $rpc->call(
-                'execute_unparameterized_statement_request',
-                new ExecuteUnparameterizedStatementRequest(),
-                static function (Response $response) use (&$statementId): void {
-                    $statementId = $response->getStatementResponse()?->getStatementId();
-                },
-            );
-            self::fail('The server did not report its error.');
+            Connection::connectTcp(port: $port, timeout: 5);
+            self::fail('The connection was accepted.');
         } catch (ServerException $exception) {
-            self::assertSame('Expected test error', $exception->getMessage());
-            self::assertSame('7', (string) $statementId);
+            self::assertSame('Wrong username or password', $exception->getMessage());
+            self::assertSame('28000', $exception->getSqlState());
+            self::assertNull($exception->getServerErrorCode());
         }
+    }
 
-        self::assertFalse($rpc->isClosed());
-        self::assertInstanceOf(CommitResponse::class, $rpc->call('commit_request', new CommitRequest())->getCommitResponse());
+    /** @return iterable<string, array{string, ?string, ?int}> */
+    public static function statementErrors(): iterable
+    {
+        yield 'legacy message only' => ['legacy-statement-error', null, null];
+        yield 'internal error with explicit code zero' => ['statement-error', 'XX000', 0];
+    }
+
+    #[DataProvider('statementErrors')]
+    public function testStatementErrorPreservesTheConnectionAndPreliminaryStatementId(
+        string $scenario,
+        ?string $sqlState,
+        ?int $serverErrorCode,
+    ): void {
+        $port = $this->startFixture($scenario);
+        $connection = Connection::connectTcp(port: $port, timeout: 5);
+        try {
+            $cursor = $connection->cursor();
+            try {
+                $cursor->execute('SELECT 1');
+                self::fail('The server did not report its error.');
+            } catch (ServerException $exception) {
+                self::assertSame("Expected test error (SQLSTATE 22012, code 42)\n", $exception->getMessage());
+                self::assertSame($sqlState, $exception->getSqlState());
+                self::assertSame($serverErrorCode, $exception->getServerErrorCode());
+            }
+            self::assertFalse($connection->isClosed());
+            $connection->commit();
+        } finally {
+            $connection->close();
+        }
+    }
+
+    public function testNonFinalServerErrorClosesTheConnection(): void
+    {
+        $rpc = $this->startServer('non-final-error');
+        try {
+            $rpc->call('connection_check_request', new ConnectionCheckRequest());
+            self::fail('The non-final error was accepted.');
+        } catch (ProtocolException $exception) {
+            self::assertSame('Prism sent a non-final error response.', $exception->getMessage());
+            self::assertTrue($rpc->isClosed());
+        }
     }
 
     /** @return iterable<string, array{string, class-string<DriverException>}> */

@@ -22,6 +22,12 @@ class ErrorResponse extends \Google\Protobuf\Internal\Message
      * Generated from protobuf field <code>string message = 1;</code>
      */
     protected $message = '';
+    /**
+     * Structured details, when provided by the server (since Prism 2.4).
+     *
+     * Generated from protobuf field <code>.org.polypheny.prism.ErrorDetails details = 2;</code>
+     */
+    protected $details = null;
 
     /**
      * Constructor.
@@ -31,6 +37,8 @@ class ErrorResponse extends \Google\Protobuf\Internal\Message
      *
      *     @type string $message
      *           Human readable error message
+     *     @type \Org\Polypheny\Prism\ErrorDetails $details
+     *           Structured details, when provided by the server (since Prism 2.4).
      * }
      */
     public function __construct($data = NULL) {
@@ -60,6 +68,42 @@ class ErrorResponse extends \Google\Protobuf\Internal\Message
     {
         GPBUtil::checkString($var, True);
         $this->message = $var;
+
+        return $this;
+    }
+
+    /**
+     * Structured details, when provided by the server (since Prism 2.4).
+     *
+     * Generated from protobuf field <code>.org.polypheny.prism.ErrorDetails details = 2;</code>
+     * @return \Org\Polypheny\Prism\ErrorDetails|null
+     */
+    public function getDetails()
+    {
+        return $this->details;
+    }
+
+    public function hasDetails()
+    {
+        return isset($this->details);
+    }
+
+    public function clearDetails()
+    {
+        unset($this->details);
+    }
+
+    /**
+     * Structured details, when provided by the server (since Prism 2.4).
+     *
+     * Generated from protobuf field <code>.org.polypheny.prism.ErrorDetails details = 2;</code>
+     * @param \Org\Polypheny\Prism\ErrorDetails $var
+     * @return $this
+     */
+    public function setDetails($var)
+    {
+        GPBUtil::checkMessage($var, \Org\Polypheny\Prism\ErrorDetails::class);
+        $this->details = $var;
 
         return $this;
     }

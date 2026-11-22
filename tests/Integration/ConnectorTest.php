@@ -254,7 +254,11 @@ final class ConnectorTest extends TestCase
         try {
             $cursor->execute('SELEC 1');
             self::fail('An invalid SQL statement must report a server error.');
-        } catch (ServerException) {
+        } catch (ServerException $error) {
+            if (version_compare($this->connection->serverVersion(), '2.4', '>=')) {
+                self::assertSame('42601', $error->getSqlState());
+                self::assertNull($error->getServerErrorCode());
+            }
             $this->connection->rollback();
         }
         $cursor->execute('SELECT 7');
@@ -274,13 +278,22 @@ final class ConnectorTest extends TestCase
 
     public function testRejectsInvalidCredentials(): void
     {
-        $this->expectException(DriverException::class);
-        Connection::connectTcp(
-            self::host(),
-            self::port(),
-            self::temporaryName('nonexistent'),
-            'invalid',
-        )->close();
+        try {
+            $invalid = Connection::connectTcp(
+                self::host(),
+                self::port(),
+                self::temporaryName('nonexistent'),
+                'invalid',
+            );
+        } catch (ServerException $error) {
+            if (version_compare($this->connection->serverVersion(), '2.4', '>=')) {
+                self::assertSame('28000', $error->getSqlState());
+                self::assertNull($error->getServerErrorCode());
+            }
+            return;
+        }
+        $invalid->close();
+        self::fail('Invalid credentials were accepted.');
     }
 
     public function testUnixSocketConnection(): void
