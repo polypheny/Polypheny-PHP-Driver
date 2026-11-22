@@ -24,13 +24,13 @@ class ErrorDetails extends \Google\Protobuf\Internal\Message
      */
     protected $error_code = null;
     /**
-     * An optional state description in the form of an identifier that provides further context about the error.
+     * A five-character SQLSTATE, including implementation-defined states.
      *
      * Generated from protobuf field <code>optional string state = 2;</code>
      */
     protected $state = null;
     /**
-     * A human-readable message describing the error in detail. This message offers clients a clear understanding of the issue.
+     * The same human-readable message as in ErrorResponse.message.
      *
      * Generated from protobuf field <code>optional string message = 3;</code>
      */
@@ -45,9 +45,9 @@ class ErrorDetails extends \Google\Protobuf\Internal\Message
      *     @type int $error_code
      *            A numeric code representing the specific error encountered. This code can be used programmatically to handle specific error cases.
      *     @type string $state
-     *           An optional state description in the form of an identifier that provides further context about the error.
+     *           A five-character SQLSTATE, including implementation-defined states.
      *     @type string $message
-     *           A human-readable message describing the error in detail. This message offers clients a clear understanding of the issue.
+     *           The same human-readable message as in ErrorResponse.message.
      * }
      */
     public function __construct($data = NULL) {
@@ -92,7 +92,7 @@ class ErrorDetails extends \Google\Protobuf\Internal\Message
     }
 
     /**
-     * An optional state description in the form of an identifier that provides further context about the error.
+     * A five-character SQLSTATE, including implementation-defined states.
      *
      * Generated from protobuf field <code>optional string state = 2;</code>
      * @return string
@@ -113,7 +113,7 @@ class ErrorDetails extends \Google\Protobuf\Internal\Message
     }
 
     /**
-     * An optional state description in the form of an identifier that provides further context about the error.
+     * A five-character SQLSTATE, including implementation-defined states.
      *
      * Generated from protobuf field <code>optional string state = 2;</code>
      * @param string $var
@@ -128,7 +128,7 @@ class ErrorDetails extends \Google\Protobuf\Internal\Message
     }
 
     /**
-     * A human-readable message describing the error in detail. This message offers clients a clear understanding of the issue.
+     * The same human-readable message as in ErrorResponse.message.
      *
      * Generated from protobuf field <code>optional string message = 3;</code>
      * @return string
@@ -149,7 +149,7 @@ class ErrorDetails extends \Google\Protobuf\Internal\Message
     }
 
     /**
-     * A human-readable message describing the error in detail. This message offers clients a clear understanding of the issue.
+     * The same human-readable message as in ErrorResponse.message.
      *
      * Generated from protobuf field <code>optional string message = 3;</code>
      * @param string $var

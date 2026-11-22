@@ -1,7 +1,7 @@
 # Polypheny PHP Driver
 
 A PHP client for [Polypheny](https://polypheny.com/) using the Prism query interface.
-It requires 64-bit PHP 8.2 or later and uses the published Prism 2.3 schema.
+It requires 64-bit PHP 8.2 or later and uses the published Prism 2.4 schema.
 The server decides whether its Prism version is compatible during connection.
 Document collection metadata requires a server with Prism 2.2 document metadata support.
 
@@ -108,6 +108,13 @@ Catch `Polypheny\DriverException` for driver and transport errors.
 `Polypheny\ServerException` and `Polypheny\ProtocolException` specialize it for
 Prism error responses and malformed protocol data, respectively.
 
+For a `ServerException`, `getMessage()` returns the server's original error
+message. With Prism 2.4 servers, `getSqlState()` and `getServerErrorCode()`
+return the optional five-character SQLSTATE and numeric server error code.
+Each accessor returns `null` if its field is absent, including for message-only
+responses from older servers. An explicitly supplied error code of `0` is
+returned as `0`. PHP's inherited `getCode()` still returns `0` for RPC errors.
+
 ## Development and tests
 
 ```sh
@@ -116,7 +123,7 @@ composer test
 POLYPHENY_TEST_INTEGRATION=1 composer test:integration
 ```
 
-The integration suite runs against a Prism 2.3 Polypheny instance. Its defaults
+The integration suite runs against a Prism 2.4 Polypheny instance. Its defaults
 are TCP host `127.0.0.1`, port `20590`, user `pa` and an empty password.
 Set `POLYPHENY_TEST_HOST`, `POLYPHENY_TEST_PORT`, `POLYPHENY_TEST_USER` and
 `POLYPHENY_TEST_PASSWORD` to override them. `POLYPHENY_TEST_SOCKET` enables a
@@ -125,6 +132,6 @@ reachable from both the test process and Polypheny. Set
 `POLYPHENY_TEST_MONGOSH` to a shell executable and, if needed,
 `POLYPHENY_TEST_MONGO_HOST` and `POLYPHENY_TEST_MONGO_PORT`.
 
-The schema in `proto/` is from the [Prism 2.3 release](https://github.com/polypheny/Polypheny-Prism-API/tree/2.3/org/polypheny/prism)
-at commit `25ddc2872af07807fd8742f19b59df96a4a14b15`. To regenerate the PHP
+The schema in `proto/` is from the [Prism 2.4 release](https://github.com/polypheny/Polypheny-Prism-API/releases/tag/2.4)
+at commit `1c2fb6910c64c23ae6fa9178b5e2f772579682ed`. To regenerate the PHP
 bindings, run `scripts/generate-proto.sh` with protoc 28.2.

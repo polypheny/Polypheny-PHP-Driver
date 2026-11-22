@@ -20,7 +20,7 @@ use WeakMap;
 final class Connection
 {
     public const PRISM_MAJOR = 2;
-    public const PRISM_MINOR = 3;
+    public const PRISM_MINOR = 4;
 
     /** @var WeakMap<Cursor, true> */
     private WeakMap $cursors;
