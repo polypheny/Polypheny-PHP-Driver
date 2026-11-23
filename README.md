@@ -111,6 +111,8 @@ Prism error responses and malformed protocol data, respectively.
 For a `ServerException`, `getMessage()` returns the server's original error
 message. With Prism 2.4 servers, `getSqlState()` and `getServerErrorCode()`
 return the optional five-character SQLSTATE and numeric server error code.
+The server can also report SQLSTATEs for queries in other languages, such as
+Cypher.
 Each accessor returns `null` if its field is absent, including for message-only
 responses from older servers. An explicitly supplied error code of `0` is
 returned as `0`. PHP's inherited `getCode()` still returns `0` for RPC errors.
