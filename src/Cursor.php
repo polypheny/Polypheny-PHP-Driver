@@ -52,12 +52,12 @@ final class Cursor implements IteratorAggregate
     }
 
     /**
-     * Bind a list to positional placeholders, or a string-keyed array to named placeholders.
+     * Bind a list to positional placeholders, or a string-keyed array or stdClass to named placeholders.
      */
     public function executeAny(
         string $language,
         string $query,
-        ?array $parameters = null,
+        array|stdClass|null $parameters = null,
         ?int $fetchSize = null,
         ?string $namespace = null,
     ): self {
@@ -118,10 +118,10 @@ final class Cursor implements IteratorAggregate
         Connection $connection,
         string $language,
         string $query,
-        array $parameters,
+        array|stdClass $parameters,
         ?string $namespace,
     ): StatementResult {
-        $indexed = array_is_list($parameters);
+        $indexed = is_array($parameters) && array_is_list($parameters);
         $encoded = [];
         foreach ($parameters as $key => $value) {
             if (!$indexed && !is_string($key)) {

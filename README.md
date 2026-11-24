@@ -51,9 +51,10 @@ is fetched or all open results for the transaction are closed.
 
 `execute()` runs SQL. `executeAny()` accepts a Prism language name such as
 `mongo`, `cypher`, `cql` or `pig`, and an optional namespace. A list binds positional
-parameters, and a string-keyed array binds named parameters, where supported by
-the query language. `executeMany()` runs SQL for each binding set and leaves the
-last result on the cursor.
+parameters. A string-keyed array or `stdClass` binds named parameters where the
+query language supports them. Use a `stdClass` for numeric placeholder names
+such as `$1` in Cypher. `executeMany()` runs SQL for each binding set and leaves
+the last result on the cursor.
 
 For a document namespace named `shop` with a collection named `orders`, use
 `$cursor->executeAny('mongo', 'db.orders.find({})', fetchSize: 10, namespace: 'shop')`.
@@ -73,7 +74,10 @@ against a server with Prism graph support. Graph-only projections stream
 such as `RETURN n, n.name` require Prism 2.3 on the server and preserve columns
 as PHP arrays containing typed graph values and scalars. The driver decodes
 `Node`, `Edge`, `Path` and `Graph` cells, including inside lists and documents.
-The current server accepts unparameterized Cypher over Prism.
+Cypher parameter binding requires a server with prepared Cypher support.
+On supported servers, call
+`$connection->setClientInfoProperties(['CypherResultFormat' => 'relational'])`
+to preserve rows and columns for graph-only projections too.
 
 ## Values and metadata
 
