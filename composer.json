@@ -6,7 +6,7 @@
     "require": {
         "php": ">=8.2",
         "php-64bit": "*",
-        "google/protobuf": "^5.35"
+        "google/protobuf": "^5.36"
     },
     "require-dev": {
         "phpunit/phpunit": "^11.5"

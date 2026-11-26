@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Polypheny;
 
 use Google\Protobuf\Internal\Message;
+use Org\Polypheny\Prism\ClientInfoProperties;
 use Org\Polypheny\Prism\CommitRequest;
 use Org\Polypheny\Prism\ConnectionProperties;
 use Org\Polypheny\Prism\ConnectionRequest;
@@ -107,6 +108,16 @@ final class Connection
     public function rollback(): void
     {
         $this->request('RollbackRequest', new RollbackRequest(), 'RollbackResponse');
+    }
+
+    /** @param array<string, string> $properties */
+    public function setClientInfoProperties(array $properties): void
+    {
+        $this->request(
+            'SetClientInfoPropertiesRequest',
+            (new ClientInfoProperties())->setProperties($properties),
+            'SetClientInfoPropertiesResponse',
+        );
     }
 
     public function searchNamespaces(?string $pattern = null, ?string $type = null): NamespacesResponse

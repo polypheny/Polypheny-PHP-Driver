@@ -19,6 +19,24 @@ final class GraphTest extends TestCase
     private ?Connection $connection = null;
     private string $namespace;
 
+    public function testNumericNamedCypherParameterWithRelationalGraphResults(): void
+    {
+        $this->connection->setClientInfoProperties(['CypherResultFormat' => 'relational']);
+        $cursor = $this->connection->cursor();
+        $cursor->executeAny(
+            'cypher',
+            'MATCH (n:Person) WHERE n.id = $1 RETURN n',
+            (object) ['1' => 2],
+            namespace: $this->namespace,
+        );
+        self::assertSame(['n'], array_column($cursor->description(), 'name'));
+        $rows = $cursor->fetchAll();
+        self::assertCount(1, $rows);
+        self::assertInstanceOf(Node::class, $rows[0][0]);
+        self::assertSame('Bob', $rows[0][0]->properties['name']);
+        $cursor->close();
+    }
+
     protected function setUp(): void
     {
         if (getenv('POLYPHENY_TEST_INTEGRATION') !== '1') {
