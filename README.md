@@ -2,6 +2,8 @@
 
 A PHP client for [Polypheny](https://polypheny.com/) using the Prism query interface.
 It requires 64-bit PHP 8.2 or later and uses the published Prism 2.4 schema.
+Deeply nested results use Protobuf 5.36 or later. Upgrade the optional PHP
+Protobuf extension to the same version if it is enabled.
 The server decides whether its Prism version is compatible during connection.
 Document collection metadata requires a server with Prism 2.2 document metadata support.
 

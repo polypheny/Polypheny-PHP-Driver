@@ -11,10 +11,15 @@ use Org\Polypheny\Prism\Response;
 /** @internal */
 final class Rpc
 {
+    // A nested Prism value spans multiple message levels per map or list level.
+    private const RESPONSE_RECURSION_LIMIT = 256;
+
     private int $nextRequestId = 1;
+    private readonly bool $supportsRecursionLimit;
 
     public function __construct(private readonly Transport $transport)
     {
+        $this->supportsRecursionLimit = (new \ReflectionMethod(Response::class, 'mergeFromString'))->getNumberOfParameters() >= 2;
     }
 
     /**
@@ -75,7 +80,11 @@ final class Rpc
         $payload = $this->transport->readFrame();
         $response = new Response();
         try {
-            $response->mergeFromString($payload);
+            if ($this->supportsRecursionLimit) {
+                $response->mergeFromString($payload, self::RESPONSE_RECURSION_LIMIT);
+            } else {
+                $response->mergeFromString($payload);
+            }
         } catch (\Throwable $exception) {
             $this->close();
             throw new ProtocolException('Could not decode the Prism response.', 0, $exception);
